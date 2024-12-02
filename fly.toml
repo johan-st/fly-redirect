@@ -1,0 +1,22 @@
+# fly.toml app configuration file generated for gavmofjall-se-late-sun-7042 on 2024-12-02T09:25:59+01:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'gavmofjall-se'
+primary_region = 'arn'
+
+[build]
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ['app']
+
+[[vm]]
+  memory = '256mb'
+  cpu_kind = 'shared'
+  cpus = 1
