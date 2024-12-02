@@ -1,12 +1,10 @@
 package server
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
-	"strconv"
 )
-
-var count int
 
 func (s *Server) RegisterRoutes() http.Handler {
 	mux := http.NewServeMux()
@@ -39,11 +37,34 @@ func (s *Server) corsMiddleware(next http.Handler) http.Handler {
 }
 
 func (s *Server) handlerCountAndRedirect(w http.ResponseWriter, r *http.Request) {
-	count++
-	http.Redirect(w, r, "https://www.svtplay.se/julkalendern-snodrommar?cnt="+strconv.Itoa(count)+"&ref=ywlxuignu@mozmail.com", http.StatusTemporaryRedirect)
+	http.Redirect(w, r, fmt.Sprintf("https://www.svtplay.se/julkalendern-snodrommar?cnt=%d&ref=ywlxuignu@mozmail.com", s.countInMem.Add(1)), http.StatusTemporaryRedirect)
+	go func() {
+		err := s.repo.IncrementRedirectCount()
+		if err != nil {
+			fmt.Printf("Error: failed to increment counter, %e", err)
+		} else {
+			fmt.Printf("counter incremented to %d", s.countInMem.Load())
+		}
+	}()
 }
 
 func (s *Server) handlerInfo(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(fmt.Sprintf("Count: %d", count)))
+	type Response struct {
+		RedirectsCount uint32 `json:"redirects_count"`
+		DbStatus       string `json:"db_status"`
+	}
+
+	var dbStatus string
+	if err := s.repo.HealthCheck(); err != nil {
+		dbStatus = "error"
+		fmt.Printf("ERROR: Database health check failed. Err: %v", err)
+	} else {
+		dbStatus = "ok"
+	}
+
+	response := Response{RedirectsCount: s.countInMem.Load(), DbStatus: dbStatus}
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 }
