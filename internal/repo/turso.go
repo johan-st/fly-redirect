@@ -63,16 +63,16 @@ func (t *TursoRepo) IncrementRedirectCount() error {
 	if err != nil {
 		return err
 	}
-	
+
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
 		return err
 	}
-	
+
 	if rowsAffected == 0 {
 		return sql.ErrNoRows
 	}
-	
+
 	return nil
 }
 
@@ -82,7 +82,7 @@ type LogEntry struct {
 	ID            int64     `db:"id"`
 	Timestamp     time.Time `db:"timestamp"`
 	RemoteAddr    string    `db:"remote_addr"`
-	RequestMethod string    `db:"request_method"` 
+	RequestMethod string    `db:"request_method"`
 	RequestURI    string    `db:"request_uri"`
 	Protocol      string    `db:"protocol"`
 	StatusCode    int       `db:"status_code"`
@@ -92,6 +92,11 @@ type LogEntry struct {
 
 // LogRequest inserts a new request log entry into the database
 func (t *TursoRepo) LogRequest(req *http.Request) error {
+	remoteAddr := req.RemoteAddr
+	// use X-Forwarded-For header if available (e.g. from reverse proxy)
+	if forwarded := req.Header.Get("X-Forwarded-For"); forwarded != "" {
+		remoteAddr = forwarded
+	}
 	_, err := t.db.Exec(`
 		INSERT INTO request_logs (
 			timestamp,
@@ -104,10 +109,10 @@ func (t *TursoRepo) LogRequest(req *http.Request) error {
 			referer
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 		time.Now(),
-		req.RemoteAddr,
+		remoteAddr,
 		req.Method,
 		req.RequestURI,
-		req.Proto, 
+		req.Proto,
 		http.StatusTemporaryRedirect,
 		req.UserAgent(),
 		req.Referer(),
@@ -186,8 +191,6 @@ func (t *TursoRepo) CountAllLogs() (int, error) {
 	return count, nil
 }
 
-
-
 // MIGRATIONS
 
 func (t *TursoRepo) RunMigrations() error {
@@ -207,9 +210,9 @@ func (t *TursoRepo) RunMigrations() error {
 			 count INTEGER DEFAULT 0
 		);
 		INSERT OR IGNORE INTO redirects (id, count) VALUES (1, 0);`,
-		
+
 		// v2: Rename redirects table to redirects_count
-		`ALTER TABLE redirects RENAME TO redirects_count;`,	
+		`ALTER TABLE redirects RENAME TO redirects_count;`,
 
 		// v3: Add request_logs table for tracking request details
 		`CREATE TABLE IF NOT EXISTS request_logs (
