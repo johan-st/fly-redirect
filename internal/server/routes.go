@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 )
 
 func (s *Server) RegisterRoutes() http.Handler {
@@ -42,16 +43,17 @@ func (s *Server) handlerCountAndRedirect(w http.ResponseWriter, r *http.Request)
 		err := s.repo.IncrementRedirectCount()
 		if err != nil {
 			fmt.Printf("Error: failed to increment counter, %e", err)
-		} else {
-			fmt.Printf("counter incremented to %d", s.countInMem.Load())
 		}
+		s.repo.LogRequest(r)
 	}()
 }
 
 func (s *Server) handlerInfo(w http.ResponseWriter, r *http.Request) {
 	type Response struct {
-		RedirectsCount uint32 `json:"redirects_count"`
-		DbStatus       string `json:"db_status"`
+		DbStatus         string `json:"db_status"`
+		SinceStart       int    `json:"since_start"`
+		Last24Hours      int    `json:"last_24_hours"`
+		ServiceStartedAt string `json:"service_started_at"`
 	}
 
 	var dbStatus string
@@ -61,8 +63,23 @@ func (s *Server) handlerInfo(w http.ResponseWriter, r *http.Request) {
 	} else {
 		dbStatus = "ok"
 	}
+	last24Hours, err := s.repo.CountRedirectsInTimeSpan(time.Now().Add(-24*time.Hour), time.Now())
+	if err != nil {
+		fmt.Printf("ERROR: Failed to count redirects in last 24 hours. Err: %v", err)
+		last24Hours = -1
+	}
+	sinceStart, err := s.repo.CountAllLogs()
+	if err != nil {
+		fmt.Printf("ERROR: Failed to count all logs. Err: %v", err)
+		sinceStart = -1
+	}
 
-	response := Response{RedirectsCount: s.countInMem.Load(), DbStatus: dbStatus}
+	response := Response{
+		DbStatus:         dbStatus,
+		SinceStart:       sinceStart,
+		Last24Hours:      last24Hours,
+		ServiceStartedAt: "2024-12-03 00:30",
+	}
 	if err := json.NewEncoder(w).Encode(response); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
